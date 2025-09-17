@@ -8,11 +8,42 @@ on:
 jobs:
   chromatic-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 'lts/*'
-          
-      - run: npm ci || npm install
-      - run: npx chromatic --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          cache: 'npm'
+          cache-dependency-path: storybook/package-lock.json
+
+      - name: Show working dir & files (debug)
+        run: |
+          pwd
+          ls -la
+          ls -la .storybook || true
+          cat package.json | sed -n '1,120p'
+          echo "----- .babelrc -----"
+          cat .babelrc || echo "(no .babelrc)"
+        working-directory: storybook
+
+      - name: Install deps
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm i; fi
+        working-directory: storybook
+
+      - name: Build Storybook (fail fast if config 문제)
+        run: npm run build-storybook -- --debug-webpack
+        working-directory: storybook
+
+      - name: Publish to Chromatic
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: npx chromatic --project-token=$CHROMATIC_PROJECT_TOKEN --storybook-build-dir=storybook-static --ci --debug
+        working-directory: storybook
